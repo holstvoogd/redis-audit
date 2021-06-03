@@ -71,7 +71,6 @@ end
 
 class RedisAudit
   @@key_regex = /^(.*):(.*)$/
-  @@debug_regex = /serializedlength:(\d*).*lru_seconds_idle:(\d*)/
   
   # Configure regular expressions here if you need to guarantee that certain keys are grouped together
   @@key_group_regex_list = []
@@ -118,15 +117,15 @@ class RedisAudit
   
   def audit_key(key)
     pipeline = @redis.pipelined do
-      @redis.debug("object", key)
+      @redis.memory('usage', key)
+      @redis.object('idletime', key)
       @redis.type(key)
       @redis.ttl(key)
     end
-    debug_fields = @@debug_regex.match(pipeline[0])
-    serialized_length = debug_fields[1].to_i
-    idle_time = debug_fields[2].to_i
-    type = pipeline[1]
-    ttl = pipeline[2] == -1 ? nil : pipeline[2]
+    serialized_length = pipeline[0].to_i
+    idle_time = pipeline[1].to_i
+    type = pipeline[3]
+    ttl = pipeline[4] == -1 ? nil : pipeline[4]
     @keys[group_key(key, type)].add_stats_for_key(key, type, idle_time, serialized_length, ttl)
   rescue Redis::CommandError
     $stderr.puts "Skipping key #{key}"
